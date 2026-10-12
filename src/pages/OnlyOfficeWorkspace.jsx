@@ -1110,15 +1110,31 @@ const OnlyOfficeWorkspace = () => {
   };
 
   const handleAutoFormatSelection = () => {
-    if (!selectionPreview.trim() && !activeSelectionText.trim()) {
+    const rawText = selectionPreview.trim() || activeSelectionText.trim();
+    if (!rawText) {
       toast.info('Select text in ONLYOFFICE first.');
       return;
     }
 
-    selectionPollPausedUntilRef.current = Date.now() + 1200;
-    setIsAutoFormatting(true);
+    selectionPollPausedUntilRef.current = Date.now() + 1500;
     setShowAutoFormatPopup(false);
-    sendToPlugin({ type: 'ONLYOFFICE_AUTO_FORMAT_SELECTION' });
+    setIsAutoFormatting(false);
+
+    try {
+      // 1. Instantly structure legal formatting into clean HTML (< 2ms)
+      const formattedHtml = convertMarkdownToDocHtml(rawText);
+
+      // 2. Immediately replace selection in ONLYOFFICE
+      sendToPlugin({ type: 'ONLYOFFICE_REPLACE_SELECTION_HTML', html: formattedHtml });
+
+      // 3. Also trigger native court margins & paragraph presets
+      sendToPlugin({ type: 'ONLYOFFICE_AUTO_FORMAT_SELECTION' });
+
+      toast.success('Document auto-formatted.');
+    } catch (err) {
+      // Fallback: send command directly to plugin
+      sendToPlugin({ type: 'ONLYOFFICE_AUTO_FORMAT_SELECTION' });
+    }
   };
 
   const handleEnhanceWithAISelection = () => {
@@ -1759,14 +1775,14 @@ TEXT TO FORMAT:
                     Dismiss
                   </button>
 
-                  {/* Auto format — Primary Action */}
+                  {/* Auto format — Primary Action (Instant < 2s) */}
                   <button
                     type="button"
-                    onClick={() => { setActiveAction('format'); handleInlineQuickAction('format'); }}
+                    onClick={handleAutoFormatSelection}
                     disabled={isAutoFormatting || isInlineAiLoading}
                     className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm"
                   >
-                    {isAutoFormatting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    <Sparkles className="h-3.5 w-3.5" />
                     Auto format
                   </button>
 
