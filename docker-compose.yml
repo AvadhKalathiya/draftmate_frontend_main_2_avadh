@@ -7,7 +7,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - BACKEND_API_URL=http://backend
+      - BACKEND_API_URL=http://backend:8080
       - ONLYOFFICE_API_URL=http://onlyoffice-server
       - VITE_CLIENT_ID=${VITE_CLIENT_ID}
       - VITE_PUBLIC_APP_URL=https://draftmate.in
