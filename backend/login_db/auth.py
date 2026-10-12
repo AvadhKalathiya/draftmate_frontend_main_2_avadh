@@ -854,6 +854,11 @@ def login(user: UserLogin):
         
         # Normal password check - never overwrite stored_hash on password mismatch
         if not verify_password(user.password, stored_hash):
+            if google_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This account is registered via Google. Please click 'Sign in with Google' to log in, or use 'Forgot Password' to set a manual password."
+                )
             raise HTTPException(status_code=401, detail="Invalid credentials")
             
         # Create Session

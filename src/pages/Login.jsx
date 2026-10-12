@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useGoogleLogin } from '@react-oauth/google';
 import { toast } from 'sonner';
+import { AlertCircle } from 'lucide-react';
 import logo from '../assets/draftmate_logo.png';
 import fullLogo from '../assets/FULL_LOGO.svg';
 import { API_CONFIG } from '../services/endpoints';
@@ -17,6 +18,7 @@ const Login = () => {
     const [emailValid, setEmailValid] = useState(null);
     const [passwordValid, setPasswordValid] = useState(null);
     const [shake, setShake] = useState(false);
+    const [googleWarning, setGoogleWarning] = useState('');
     const [emailTyping, setEmailTyping] = useState(false);
     const [passwordTyping, setPasswordTyping] = useState(false);
     const [mounted, setMounted] = useState(false);
@@ -37,6 +39,7 @@ const Login = () => {
     const handleEmailChange = (e) => {
         const value = e.target.value;
         setEmail(value);
+        if (googleWarning) setGoogleWarning("");
         setEmailTyping(true);
         clearTimeout(emailTypingTimer.current);
         emailTypingTimer.current = setTimeout(() => {
@@ -50,6 +53,7 @@ const Login = () => {
     const handlePasswordChange = (e) => {
         const value = e.target.value;
         setPassword(value);
+        if (googleWarning) setGoogleWarning("");
         setPasswordTyping(true);
         clearTimeout(passwordTypingTimer.current);
         passwordTypingTimer.current = setTimeout(() => {
@@ -171,7 +175,14 @@ const Login = () => {
             }
         } catch (error) {
             toast.dismiss(loadingToast);
-            toast.error(error.message);
+            const msg = error.message || "Login failed";
+            if (msg.toLowerCase().includes("google")) {
+                setGoogleWarning(msg);
+                toast.warning(msg, { duration: 6000 });
+            } else {
+                setGoogleWarning("");
+                toast.error(msg);
+            }
             setShake(true);
             setTimeout(() => setShake(false), 600);
         } finally {
@@ -594,6 +605,25 @@ const Login = () => {
                             </p>
                         </div>
 
+                        {googleWarning && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs sm:text-sm flex items-start gap-3 shadow-sm animate-in fade-in duration-200">
+                                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                <div className="flex-1">
+                                    <p className="font-bold text-amber-900 dark:text-amber-100">Registered with Google</p>
+                                    <p className="mt-1 text-amber-800 dark:text-amber-300/90 leading-relaxed text-xs">
+                                        {googleWarning}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => googleLogin()}
+                                        className="mt-3 inline-flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs rounded-lg shadow-sm transition-all cursor-pointer"
+                                    >
+                                        Sign in with Google now →
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <form className="space-y-5" onSubmit={handleLogin}>
 
                             {/* ──── EMAIL FIELD ──── */}
@@ -781,7 +811,11 @@ const Login = () => {
                             {/* Google Button */}
                             <button
                                 onClick={() => googleLogin()}
-                                className="btn-google w-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-3 animate-scale-in"
+                                className={`btn-google w-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border text-slate-700 dark:text-slate-200 h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-3 animate-scale-in transition-all ${
+                                    googleWarning
+                                        ? 'border-blue-500 ring-2 ring-blue-500/80 ring-offset-2 shadow-lg shadow-blue-500/20'
+                                        : 'border-slate-200 dark:border-slate-700'
+                                }`}
                                 type="button"
                                 style={{ opacity: 0, animationDelay: '0.8s', animationFillMode: 'forwards' }}
                             >
