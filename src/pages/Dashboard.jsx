@@ -359,17 +359,8 @@ export default function Dashboard() {
                     }
                 });
 
-            // Take top 5 recent activities
+            // Take top 5 recent activities (only real user activities, no dummy data)
             const last5Activities = uniqueActivities.slice(0, 5);
-
-            // Fallback default workspaces if brand new user has < 3 activities
-            if (last5Activities.length === 0) {
-                last5Activities.push(
-                    { id: '1', title: 'Property Dispute Draft', type: 'Legal Draft', time: '2h ago', progress: 100, link: '/dashboard/workspace' },
-                    { id: '2', title: 'Bail Application Research', type: 'Legal Research', time: '5h ago', progress: 100, link: '/dashboard/research' },
-                    { id: '3', title: 'Employment NDA Translation', type: 'Translated Document', time: 'Yesterday', progress: 100, link: '/dashboard/translation' }
-                );
-            }
 
             // ── COMPUTE REAL USER FOLDERS ──
             const computedFolders = [];
@@ -809,43 +800,71 @@ export default function Dashboard() {
                     </button>
                 </div>
                 <div className="relative z-10 flex gap-4 overflow-x-auto draftmate-scroll pb-4 snap-x snap-mandatory">
-                    {recentActivities.map((work, i) => (
-                        <motion.div
-                            key={work.id || i}
-                            whileHover={{ y: -4 }}
-                            onClick={() => navigate(work.link || '/dashboard/documents')}
-                            className="min-w-[300px] md:min-w-[340px] shrink-0 snap-start bg-white/90 backdrop-blur-sm p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="w-10 h-10 rounded-xl bg-[#F8FAFF] border border-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-[#2563EB] group-hover:text-white transition-colors shadow-sm">
-                                        {work.type?.includes('Draft') ? (
-                                            <FileText className="w-5 h-5" />
-                                        ) : work.type?.includes('Translat') ? (
-                                            <Languages className="w-5 h-5" />
-                                        ) : work.type?.includes('Research') ? (
-                                            <Search className="w-5 h-5" />
-                                        ) : (
-                                            <Folder className="w-5 h-5" />
-                                        )}
+                    {recentActivities.length > 0 ? (
+                        recentActivities.map((work, i) => (
+                            <motion.div
+                                key={work.id || i}
+                                whileHover={{ y: -4 }}
+                                onClick={() => navigate(work.link || '/dashboard/documents')}
+                                className="min-w-[300px] md:min-w-[340px] shrink-0 snap-start bg-white/90 backdrop-blur-sm p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className="w-10 h-10 rounded-xl bg-[#F8FAFF] border border-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-[#2563EB] group-hover:text-white transition-colors shadow-sm">
+                                            {work.type?.includes('Draft') ? (
+                                                <FileText className="w-5 h-5" />
+                                            ) : work.type?.includes('Translat') ? (
+                                                <Languages className="w-5 h-5" />
+                                            ) : work.type?.includes('Research') ? (
+                                                <Search className="w-5 h-5" />
+                                            ) : (
+                                                <Folder className="w-5 h-5" />
+                                            )}
+                                        </div>
+                                        <span className="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md">
+                                            {work.time}
+                                        </span>
                                     </div>
-                                    <span className="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md">
-                                        {work.time}
-                                    </span>
+                                    <h3 className="font-bold text-[#0F1C2E] text-[15px] mb-1 line-clamp-1" title={work.title}>
+                                        {work.title}
+                                    </h3>
+                                    <p className="text-xs font-medium text-slate-500 mb-6">{work.type}</p>
                                 </div>
-                                <h3 className="font-bold text-[#0F1C2E] text-[15px] mb-1 line-clamp-1" title={work.title}>
-                                    {work.title}
-                                </h3>
-                                <p className="text-xs font-medium text-slate-500 mb-6">{work.type}</p>
-                            </div>
-                            <div>
-                                <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
-                                    <div className="bg-gradient-to-r from-[#2563EB] to-cyan-500 h-1.5 rounded-full" style={{ width: `${work.progress || 100}%` }} />
+                                <div>
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
+                                        <div className="bg-gradient-to-r from-[#2563EB] to-cyan-500 h-1.5 rounded-full" style={{ width: `${work.progress || 100}%` }} />
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-600 text-right">{work.progress || 100}% Complete</div>
                                 </div>
-                                <div className="text-[10px] font-bold text-slate-600 text-right">{work.progress || 100}% Complete</div>
+                            </motion.div>
+                        ))
+                    ) : (
+                        <div className="w-full py-8 px-6 bg-white/70 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                                    <Clock className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 text-sm">No recent matter workspaces</h4>
+                                    <p className="text-xs text-slate-500">Your recent drafts, research sessions, and translations will appear here as you work.</p>
+                                </div>
                             </div>
-                        </motion.div>
-                    ))}
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    onClick={() => navigate('/dashboard/drafting')}
+                                    className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-sm"
+                                >
+                                    New Draft
+                                </button>
+                                <button
+                                    onClick={() => navigate('/dashboard/research')}
+                                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+                                >
+                                    Start Research
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </section>
 

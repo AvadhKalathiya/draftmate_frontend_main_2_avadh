@@ -51,16 +51,16 @@ export default function MainLayout() {
   const [showConsentModal, setShowConsentModal] = useState(() => {
     const isAccepted = localStorage.getItem('draftmate_ai_consent_accepted') === 'true';
     const profile = JSON.parse(localStorage.getItem('user_profile') || '{}');
-    const isExistingUser = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
-    return !isAccepted && profile.ai_consent !== 'yes' && !isExistingUser;
+    const hasCompletedOnboarding = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
+    return hasCompletedOnboarding && !isAccepted && profile.ai_consent !== 'yes';
   });
 
   useEffect(() => {
     const handleConsentCheck = () => {
       const isAccepted = localStorage.getItem('draftmate_ai_consent_accepted') === 'true';
       const profile = JSON.parse(localStorage.getItem('user_profile') || '{}');
-      const isExistingUser = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
-      setShowConsentModal(!isAccepted && profile.ai_consent !== 'yes' && !isExistingUser);
+      const hasCompletedOnboarding = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
+      setShowConsentModal(hasCompletedOnboarding && !isAccepted && profile.ai_consent !== 'yes');
     };
 
     handleConsentCheck();
