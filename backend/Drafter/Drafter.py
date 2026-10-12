@@ -150,8 +150,8 @@ JWT_SECRET = os.getenv("JWT_SECRET", "draftmate_jwt_production_signing_key_2026"
 JWT_ALGORITHM = "HS256"
 
 
-async def verify_token(authorization: Optional[str]) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
+async def verify_token(authorization: Any) -> str:
+    if not authorization or not isinstance(authorization, str) or not authorization.startswith("Bearer "):
         if os.getenv("DEV_BYPASS_AUTH", "true").lower() == "true" or os.getenv("ENVIRONMENT", "").lower() == "development":
             return "dev_counsel_bypass"
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
@@ -2070,17 +2070,18 @@ async def compile_with_documents(
         except Exception as reg_err:
             logger.warning(f"Failed to register draft in DB: {reg_err}")
 
+        internal_url = get_internal_backend_url()
         params: Dict[str, Any] = {
             "document": {
                 "fileType": "docx",
                 "key": document_key,
                 "title": file_name,
-                "url": f"http://drafter-service:8003/v2/draft/serve/{draft_id}/{file_name}",
+                "url": f"{internal_url}/drafter/v2/draft/serve/{draft_id}/{quote(file_name)}",
                 "permissions": {"edit": True, "download": True, "print": True},
             },
             "documentType": "word",
             "editorConfig": {
-                "callbackUrl": f"http://drafter-service:8003/v2/draft/callback/{draft_id}",
+                "callbackUrl": f"{internal_url}/drafter/v2/draft/callback/{draft_id}",
                 "mode": "edit",
                 "user": {
                     "id": user_id,
@@ -2416,6 +2417,118 @@ async def upload_draft(
         return params
     except Exception as e:
         logger.exception("Draft upload failed.")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v2/document/upload")
+async def upload_case_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    case_id: Optional[str] = Form(None),
+    authorization: Optional[str] = Header(default=None)
+):
+    """
+    Dedicated endpoint for Document Management uploads:
+    - Enforces 10 MB per-file storage limit
+    - Saves binary file to shared storage (EFS volume)
+    - Replicates file into lex_bot_uploads for AI research / RAG
+    - Registers metadata in auth service DB
+    - Returns standardized metadata for caseService.js
+    """
+    try:
+        user_id = await verify_token(authorization)
+
+        shared_storage_path = os.getenv("SHARED_STORAGE_PATH", "/app/shared_drafts")
+        os.makedirs(shared_storage_path, exist_ok=True)
+
+        # Enforce 10 MB storage cap per file to protect AWS Free Tier
+        MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+        file_bytes = await file.read()
+        file_size = len(file_bytes)
+        if file_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the 10 MB limit ({file_size / (1024 * 1024):.1f} MB uploaded). Please compress or reduce file size."
+            )
+
+        import uuid
+        doc_id = str(uuid.uuid4())
+        doc_dir = os.path.join(shared_storage_path, doc_id)
+        os.makedirs(doc_dir, exist_ok=True)
+
+        original_filename = file.filename or "uploaded_document"
+        safe_name = os.path.basename(original_filename.strip().replace("\\", "/"))
+        if not safe_name:
+            safe_name = f"document_{int(time.time())}"
+
+        # 1. Save document in sandboxed draft directory
+        output_path = os.path.join(doc_dir, safe_name)
+        with open(output_path, "wb") as f:
+            f.write(file_bytes)
+
+        # 2. Save root copy so flat file lookups find it instantly
+        try:
+            root_copy_path = os.path.join(shared_storage_path, safe_name)
+            with open(root_copy_path, "wb") as rf:
+                rf.write(file_bytes)
+        except Exception:
+            pass
+
+        # 3. Copy to lex_bot upload directory for AI indexing / RAG
+        lex_bot_upload_dir = "/app/shared_drafts/lex_bot_uploads"
+        os.makedirs(lex_bot_upload_dir, exist_ok=True)
+        lex_bot_path = os.path.join(lex_bot_upload_dir, safe_name)
+        with open(lex_bot_path, "wb") as lf:
+            lf.write(file_bytes)
+
+        # 4. If DOCX, trigger background text extraction for session cache
+        if safe_name.lower().endswith(".docx"):
+            background_tasks.add_task(extract_and_cache_docx, lex_bot_path)
+
+        document_key = hashlib.sha256(doc_id.encode("utf-8")).hexdigest()
+
+        # 5. Register document in PostgreSQL database via auth service
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{AUTH_SERVICE_URL.rstrip('/')}/internal/draft/register",
+                    json={
+                        "draft_id": doc_id,
+                        "name": safe_name,
+                        "filename": safe_name,
+                        "document_key": document_key,
+                        "created_by": user_id,
+                        "variables_detected": [],
+                        "status": "Ready",
+                        "section": "documents"
+                    },
+                    timeout=10.0
+                )
+        except Exception as reg_err:
+            logger.warning(f"Failed to register document in DB: {reg_err}")
+
+        # Format human readable file size
+        if file_size >= 1024 * 1024:
+            formatted_size = f"{file_size / (1024 * 1024):.1f} MB"
+        else:
+            formatted_size = f"{max(1, round(file_size / 1024))} KB"
+
+        doc_url = f"/drafter/v2/draft/serve/{doc_id}/{quote(safe_name)}"
+
+        return {
+            "id": doc_id,
+            "name": safe_name,
+            "filename": safe_name,
+            "document_key": document_key,
+            "size": formatted_size,
+            "url": doc_url,
+            "s3_key": f"{doc_id}/{safe_name}",
+            "status": "synced"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Document upload failed.")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -43,6 +43,8 @@ services:
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
       - DRAFTER_SELF_URL=http://app:8080/drafter
+    volumes:
+      - ./shared_drafts:/app/shared_drafts
     depends_on:
       - db
       - qdrant

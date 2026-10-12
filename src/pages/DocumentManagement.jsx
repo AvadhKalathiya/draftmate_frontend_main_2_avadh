@@ -288,6 +288,13 @@ const DocumentManagement = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File size exceeds 10 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB). Please select a file under 10 MB.`);
+      e.target.value = '';
+      return;
+    }
+
     const toastId = toast.loading(`Uploading "${file.name}"...`);
     try {
       const fileBlobUrl = URL.createObjectURL(file);
