@@ -1743,14 +1743,39 @@ TEXT TO FORMAT:
                 </div>
 
                 {/* Actions Row */}
-                <div className="px-4 py-3 flex flex-wrap gap-2.5 border-b border-gray-100">
+                <div className="px-4 py-3 flex flex-wrap items-center gap-2.5 border-b border-gray-100">
 
-                  {/* Enhance with AI — standalone */}
+                  {/* Dismiss */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dismissedSelectionTextRef.current = selectionPreview;
+                      setShowAutoFormatPopup(false);
+                      setIsAutoFormatting(false);
+                      setInlineAiResponse('');
+                    }}
+                    className="text-gray-500 hover:text-gray-800 px-3 py-2 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Dismiss
+                  </button>
+
+                  {/* Auto format — Primary Action */}
+                  <button
+                    type="button"
+                    onClick={() => { setActiveAction('format'); handleInlineQuickAction('format'); }}
+                    disabled={isAutoFormatting || isInlineAiLoading}
+                    className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    {isAutoFormatting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    Auto format
+                  </button>
+
+                  {/* Enhance with AI */}
                   <button
                     type="button"
                     onClick={() => { setActiveAction('enhance'); handleInlineQuickAction('enhance'); }}
                     disabled={isAutoFormatting || isInlineAiLoading}
-                    className={`flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${activeAction === 'enhance' ? 'ring-2 ring-blue-300' : ''}`}
+                    className={`flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${activeAction === 'enhance' ? 'ring-2 ring-blue-300' : ''}`}
                   >
                     {isInlineAiLoading && activeAction === 'enhance' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     Enhance with AI
@@ -1805,16 +1830,6 @@ TEXT TO FORMAT:
                       </div>
                     )}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => { setActiveAction('format'); handleInlineQuickAction('format'); }}
-                    disabled={isAutoFormatting || isInlineAiLoading}
-                    className="flex items-center gap-2 rounded-lg border border-gray-200 px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    {isAutoFormatting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    Auto Format
-                  </button>
 
                   <button
                     type="button"
