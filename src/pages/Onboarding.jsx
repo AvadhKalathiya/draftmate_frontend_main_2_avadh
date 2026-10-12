@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import fullLogo from "../assets/FULL_LOGO.svg"; // Γ£à Added import
+import fullLogo from "../assets/FULL_LOGO.svg";
+import AiContentNoticeModal from "../components/AiContentNoticeModal";
 import "./Onboarding.css";
 
 const roles = [
@@ -100,6 +101,11 @@ const Onboarding = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [showConsentModal, setShowConsentModal] = useState(() => {
+    const isAccepted = localStorage.getItem('draftmate_ai_consent_accepted') === 'true';
+    const profile = JSON.parse(localStorage.getItem('user_profile') || '{}');
+    return !isAccepted && profile.ai_consent !== 'yes';
+  });
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -338,6 +344,12 @@ const Onboarding = () => {
       <div className="exit-overlay">
         <div className="exit-burst" />
       </div>
+
+      {/* Mandatory Terms of Use and Privacy Policy Modal for New Users */}
+      <AiContentNoticeModal
+        isOpen={showConsentModal}
+        onAccept={() => setShowConsentModal(false)}
+      />
     </div>
   );
 };

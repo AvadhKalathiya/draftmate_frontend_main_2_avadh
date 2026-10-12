@@ -71,58 +71,50 @@ const AiContentNoticeModal = ({ isOpen, onAccept }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 sm:p-6 animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-md rounded-2xl bg-white shadow-[0_20px_60px_rgba(15,23,42,0.25)] border border-slate-100 overflow-hidden flex flex-col my-auto p-6 sm:p-8 space-y-6"
+        className="relative w-full max-w-[460px] rounded-3xl bg-white shadow-[0_25px_70px_rgba(15,23,42,0.28)] border border-slate-100 overflow-hidden flex flex-col my-auto p-7 sm:p-8 space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Title */}
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-800">
+          <h2 className="text-[22px] font-bold tracking-tight text-slate-900">
             Terms of Use and Privacy Policy
           </h2>
         </div>
 
         {/* Description Text */}
-        <div className="space-y-4 text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
+        <div className="space-y-3.5 text-[13.5px] sm:text-[14px] text-slate-700 leading-relaxed font-normal">
           <p>
-            Before you start exploring DraftMate, we kindly ask you to review and agree to our{' '}
-            <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-medium hover:underline">
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-medium hover:underline">
-              Privacy Policy
-            </a>
-            . These documents outline important information about your rights and responsibilities, as well as how we handle your personal data.
+            Before you start exploring DraftMate, we kindly ask you to review and agree to our Terms of Service and Privacy Policy. These documents outline important information about your rights and responsibilities, as well as how we handle your personal data. By using our website, you acknowledge that you have read, understood, and agreed to these terms. Your continued use of our site constitutes acceptance of these policies.
           </p>
           <p>
-            By using our website, you acknowledge that you have read, understood, and agreed to these terms. Your continued use of our site constitutes acceptance of these policies. Thank you for your attention and cooperation.
+            Thank you for your attention and cooperation.
           </p>
         </div>
 
         {/* Checkboxes */}
-        <div className="space-y-3 pt-2">
+        <div className="space-y-3 pt-1">
           {/* Checkbox 1: Terms of Service */}
           <label className="flex items-center gap-3 cursor-pointer select-none group">
             <input
               type="checkbox"
               checked={agreeTerms}
               onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 shrink-0 accent-blue-600 cursor-pointer"
+              className="h-5 w-5 rounded border-slate-300 text-[#147a94] focus:ring-2 focus:ring-[#147a94]/30 shrink-0 accent-[#147a94] cursor-pointer"
             />
-            <span className="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900 transition-colors">
+            <span className="text-[14px] text-slate-800 font-medium group-hover:text-slate-950 transition-colors">
               I agree to the{' '}
               <a
                 href="/terms"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="font-bold text-slate-800 hover:text-blue-600 underline"
+                className="font-medium text-slate-800 hover:text-[#147a94] hover:underline"
               >
                 Terms of Service
               </a>{' '}
-              <span className="text-red-500 font-bold">*</span>
+              <span className="text-slate-800 font-medium">*</span>
             </span>
           </label>
 
@@ -132,20 +124,20 @@ const AiContentNoticeModal = ({ isOpen, onAccept }) => {
               type="checkbox"
               checked={agreePrivacy}
               onChange={(e) => setAgreePrivacy(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 shrink-0 accent-blue-600 cursor-pointer"
+              className="h-5 w-5 rounded border-slate-300 text-[#147a94] focus:ring-2 focus:ring-[#147a94]/30 shrink-0 accent-[#147a94] cursor-pointer"
             />
-            <span className="text-xs sm:text-sm text-slate-700 font-medium group-hover:text-slate-900 transition-colors">
+            <span className="text-[14px] text-slate-800 font-medium group-hover:text-slate-950 transition-colors">
               I agree to the{' '}
               <a
                 href="/privacy-policy"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="font-bold text-slate-800 hover:text-blue-600 underline"
+                className="font-medium text-slate-800 hover:text-[#147a94] hover:underline"
               >
                 Privacy Policy
               </a>{' '}
-              <span className="text-red-500 font-bold">*</span>
+              <span className="text-slate-800 font-medium">*</span>
             </span>
           </label>
         </div>
@@ -156,9 +148,9 @@ const AiContentNoticeModal = ({ isOpen, onAccept }) => {
             type="button"
             onClick={handleConfirm}
             disabled={!isFormValid || isSubmitting}
-            className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 px-6 text-sm font-semibold transition-all shadow-sm ${isFormValid
-                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-[0.99] cursor-pointer'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300/60 shadow-none'
+            className={`w-full flex items-center justify-center gap-2 rounded-full py-3.5 px-6 text-[15px] font-semibold transition-all shadow-md ${isFormValid
+                ? 'bg-[#147a94] hover:bg-[#0f647b] text-white shadow-[#147a94]/25 active:scale-[0.99] cursor-pointer'
+                : 'bg-[#147a94]/40 text-white/80 cursor-not-allowed border border-transparent shadow-none'
               }`}
           >
             {isSubmitting ? (

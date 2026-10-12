@@ -51,15 +51,16 @@ export default function MainLayout() {
   const [showConsentModal, setShowConsentModal] = useState(() => {
     const isAccepted = localStorage.getItem('draftmate_ai_consent_accepted') === 'true';
     const profile = JSON.parse(localStorage.getItem('user_profile') || '{}');
-    return !isAccepted && profile.ai_consent !== 'yes';
+    const isExistingUser = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
+    return !isAccepted && profile.ai_consent !== 'yes' && !isExistingUser;
   });
 
   useEffect(() => {
     const handleConsentCheck = () => {
       const isAccepted = localStorage.getItem('draftmate_ai_consent_accepted') === 'true';
       const profile = JSON.parse(localStorage.getItem('user_profile') || '{}');
-      const profileAccepted = profile.ai_consent === 'yes';
-      setShowConsentModal(!isAccepted && !profileAccepted);
+      const isExistingUser = profile.onboarding_completed === 'yes' || localStorage.getItem('draftmate_onboarded') === 'true';
+      setShowConsentModal(!isAccepted && profile.ai_consent !== 'yes' && !isExistingUser);
     };
 
     handleConsentCheck();

@@ -795,9 +795,17 @@ def register(user: UserSignup):
     try:
         # Check if user already exists (case-insensitive lookup)
         email_lower = user.email.strip().lower() if user.email else ""
-        cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email_lower,))
-        if cur.fetchone():
-            raise HTTPException(status_code=400, detail="Email already registered")
+        cur.execute("SELECT id, google_id FROM users WHERE LOWER(email) = %s", (email_lower,))
+        existing = cur.fetchone()
+        if existing:
+            user_id, google_id = existing
+            if google_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This email is already registered via Google. Please click 'Sign in with Google' to log in."
+                )
+            else:
+                raise HTTPException(status_code=400, detail="Email already registered")
         
         # Create new user
         user_id = str(uuid.uuid4())
@@ -805,11 +813,11 @@ def register(user: UserSignup):
         display_name = build_display_name(user.email)
         
         cur.execute(
-            "INSERT INTO users (id, email, password_hash) VALUES (%s, %s, %s)",
+            "INSERT INTO users (id, email, password_hash, ai_consent) VALUES (%s, %s, %s, 'no')",
             (user_id, email_lower, hashed_pwd)
         )
         conn.commit()
-        return {"message": "User registered successfully", "user_id": user_id}
+        return {"message": "User registered successfully", "user_id": user_id, "is_new_user": True}
         
     except HTTPException as he:
         conn.rollback()
@@ -837,22 +845,16 @@ def login(user: UserLogin):
         
         user_id, stored_hash, google_id = result
         
-        if not stored_hash:
-            if user.password:
-                new_hash = hash_password(user.password)
-                cur.execute("UPDATE users SET password_hash = %s WHERE LOWER(email) = %s", (new_hash, email_lower))
-                conn.commit()
-            else:
-                raise HTTPException(status_code=400, detail="Please enter a valid password.")
-        else:
-            if not verify_password(user.password, stored_hash):
-                if google_id:
-                    # Update password for Google account if a new manual password is provided
-                    new_hash = hash_password(user.password)
-                    cur.execute("UPDATE users SET password_hash = %s WHERE LOWER(email) = %s", (new_hash, email_lower))
-                    conn.commit()
-                else:
-                    raise HTTPException(status_code=401, detail="Invalid credentials")
+        # If user registered with Google and has no manual password set
+        if not stored_hash or stored_hash.startswith("google_oauth_") or stored_hash == "placeholder":
+            raise HTTPException(
+                status_code=400,
+                detail="This account is registered via Google. Please click 'Sign in with Google' to log in, or use 'Forgot Password' to set a manual password."
+            )
+        
+        # Normal password check - never overwrite stored_hash on password mismatch
+        if not verify_password(user.password, stored_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
             
         # Create Session
         session_id = str(uuid.uuid4())
@@ -862,13 +864,16 @@ def login(user: UserLogin):
         )
         conn.commit()
         
+        profile = get_profile_internal(cur, user_id)
+        is_new_user = (profile.get("onboarding_completed") != "yes")
 
         return {
             "message": "Login successful", 
             "session_id": session_id, 
             "user_id": user_id,
             "email": email_lower,
-            "profile": get_profile_internal(cur, user_id)
+            "is_new_user": is_new_user,
+            "profile": profile
         }
         
     except HTTPException as he:
@@ -920,20 +925,22 @@ def google_login(model: GoogleLoginModel):
         user_picture = (id_info or {}).get('picture') or (user_info or {}).get('picture')
              
         # Check if user exists
-        cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+        cur.execute("SELECT id, password_hash FROM users WHERE LOWER(email) = %s", (email,))
         result = cur.fetchone()
         
         user_id = None
+        is_new_user = False
         if result:
             user_id = result[0]
-            # Update google_id if missing (optional but good practice)
+            # Link google_id if missing (preserves manual password if set)
             cur.execute("UPDATE users SET google_id = %s WHERE id = %s", (google_id, user_id))
         else:
-            # Create new user
+            # Create new user with Google placeholder identifier
+            is_new_user = True
             user_id = str(uuid.uuid4())
-            placeholder_password = hash_password(str(uuid.uuid4()))
+            placeholder_password = f"google_oauth_{uuid.uuid4()}"
             cur.execute(
-                "INSERT INTO users (id, email, password_hash, google_id, full_name) VALUES (%s, %s, %s, %s, %s)",
+                "INSERT INTO users (id, email, password_hash, google_id, full_name, ai_consent) VALUES (%s, %s, %s, %s, %s, 'no')",
                 (user_id, email, placeholder_password, google_id, user_name)
             )
         
@@ -959,6 +966,10 @@ def google_login(model: GoogleLoginModel):
         )
         conn.commit()
         
+        profile = get_profile_internal(cur, user_id)
+        if not is_new_user and profile.get("onboarding_completed") != "yes":
+            is_new_user = True
+
         return {
             "message": "Google login successful", 
             "session_id": session_id, 
@@ -966,8 +977,8 @@ def google_login(model: GoogleLoginModel):
             "email": email,
             "name": user_name,
             "picture": user_picture,
-            # Fetch full profile from DB for caching
-            "profile": get_profile_internal(cur, user_id)
+            "is_new_user": is_new_user,
+            "profile": profile
         }
         
     except ValueError as e:

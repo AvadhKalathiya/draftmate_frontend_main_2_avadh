@@ -139,28 +139,36 @@ const Login = () => {
             localStorage.setItem('session_id', data.session_id);
             localStorage.setItem('user_id', data.user_id);
 
-            if (data.profile && Object.keys(data.profile).length > 0) {
-                localStorage.setItem('user_profile', JSON.stringify({
-                    ...data.profile, id: data.user_id, email
-                }));
-                if (data.profile.ai_consent === 'yes') {
-                    localStorage.setItem('draftmate_ai_consent_accepted', 'true');
-                    localStorage.setItem('draftmate_ai_consent_value', 'yes');
-                } else {
-                    localStorage.removeItem('draftmate_ai_consent_accepted');
-                    localStorage.removeItem('draftmate_ai_consent_value');
-                    localStorage.removeItem('draftmate_ai_consent_details');
-                }
+            const profileData = data.profile && Object.keys(data.profile).length > 0
+                ? { ...data.profile, id: data.user_id, email }
+                : { email, id: data.user_id };
+
+            localStorage.setItem('user_profile', JSON.stringify(profileData));
+
+            if (profileData.ai_consent === 'yes') {
+                localStorage.setItem('draftmate_ai_consent_accepted', 'true');
+                localStorage.setItem('draftmate_ai_consent_value', 'yes');
             } else {
-                localStorage.setItem('user_profile', JSON.stringify({ email, id: data.user_id }));
                 localStorage.removeItem('draftmate_ai_consent_accepted');
                 localStorage.removeItem('draftmate_ai_consent_value');
                 localStorage.removeItem('draftmate_ai_consent_details');
             }
 
+            // Route new users to onboarding
+            const hasOnboarded = !data.is_new_user && (
+                profileData.onboarding_completed === 'yes' ||
+                localStorage.getItem('draftmate_onboarded') === 'true' ||
+                !!(profileData.professional_background || profileData.role || profileData.workplace || profileData.bar_council || profileData.college_name)
+            );
+
             toast.dismiss(loadingToast);
-            toast.success("Welcome back!");
-            navigate('/dashboard/home');
+            if (!hasOnboarded) {
+                toast.success("Welcome! Let's personalize your experience.");
+                navigate('/onboarding');
+            } else {
+                toast.success("Welcome back!");
+                navigate('/dashboard/home');
+            }
         } catch (error) {
             toast.dismiss(loadingToast);
             toast.error(error.message);
@@ -209,48 +217,56 @@ const Login = () => {
                     body: JSON.stringify({ token: tokenStr }),
                 });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    localStorage.setItem('session_id', data.session_id);
-                    localStorage.setItem('user_id', data.user_id);
-                    const profileData = data.profile && Object.keys(data.profile).length > 0
-                        ? { ...data.profile, id: data.user_id, email: data.email, google: true }
-                        : {
-                            id: data.user_id, email: data.email, name: data.name,
-                            image: data.picture,
-                            firstName: data.name?.split(' ')[0] || '',
-                            lastName: data.name?.split(' ').slice(1).join(' ') || '',
-                            google: true
-                        };
-                    localStorage.setItem('user_profile', JSON.stringify(profileData));
-
-                    // Check onboarding status
-                    const hasOnboarded = profileData.onboarding_completed === 'yes' ||
-                        localStorage.getItem('draftmate_onboarded') === 'true' ||
-                        !!(profileData.professional_background || profileData.role || profileData.bar_council || profileData.college_name);
-
-                    // Restore consent state from backend if already accepted
-                    if (profileData.ai_consent === 'yes') {
-                        localStorage.setItem('draftmate_ai_consent_accepted', 'true');
-                        localStorage.setItem('draftmate_ai_consent_value', 'yes');
-                    } else {
-                        localStorage.removeItem('draftmate_ai_consent_accepted');
-                        localStorage.removeItem('draftmate_ai_consent_value');
-                        localStorage.removeItem('draftmate_ai_consent_details');
-                    }
-
-                    toast.dismiss(loadingToast);
-                    if (!hasOnboarded) {
-                        toast.success("Welcome! Let's personalize your experience.");
-                        navigate('/onboarding');
-                    } else {
-                        toast.success("Welcome back!");
-                        navigate('/dashboard/home');
-                    }
-                    return;
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || "Google login failed on server");
                 }
+
+                localStorage.setItem('session_id', data.session_id);
+                localStorage.setItem('user_id', data.user_id);
+                const profileData = data.profile && Object.keys(data.profile).length > 0
+                    ? { ...data.profile, id: data.user_id, email: data.email, google: true }
+                    : {
+                        id: data.user_id, email: data.email, name: data.name,
+                        image: data.picture,
+                        firstName: data.name?.split(' ')[0] || '',
+                        lastName: data.name?.split(' ').slice(1).join(' ') || '',
+                        google: true
+                    };
+                localStorage.setItem('user_profile', JSON.stringify(profileData));
+
+                // Check onboarding status for new users
+                const hasOnboarded = !data.is_new_user && (
+                    profileData.onboarding_completed === 'yes' ||
+                    localStorage.getItem('draftmate_onboarded') === 'true' ||
+                    !!(profileData.professional_background || profileData.role || profileData.workplace || profileData.bar_council || profileData.college_name)
+                );
+
+                // Restore consent state from backend if already accepted
+                if (profileData.ai_consent === 'yes') {
+                    localStorage.setItem('draftmate_ai_consent_accepted', 'true');
+                    localStorage.setItem('draftmate_ai_consent_value', 'yes');
+                } else {
+                    localStorage.removeItem('draftmate_ai_consent_accepted');
+                    localStorage.removeItem('draftmate_ai_consent_value');
+                    localStorage.removeItem('draftmate_ai_consent_details');
+                }
+
+                toast.dismiss(loadingToast);
+                if (!hasOnboarded) {
+                    toast.success("Welcome! Let's personalize your experience.");
+                    navigate('/onboarding');
+                } else {
+                    toast.success("Welcome back!");
+                    navigate('/dashboard/home');
+                }
+                return;
             } catch (err) {
-                console.warn("Backend google-login endpoint unreachable, engaging seamless Google auth fallback:", err);
+                console.error("Google login error:", err);
+                toast.dismiss(loadingToast);
+                toast.error(err.message || "Google authentication failed");
+                setIsLoading(false);
+                return;
             }
 
             // Client-side Google auth fallback if backend returned non-200 or 500
