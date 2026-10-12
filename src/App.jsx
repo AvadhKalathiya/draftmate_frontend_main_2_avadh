@@ -119,15 +119,6 @@ function LibraryRedirect() {
 }
 
 function App() {
-  // Requires a general user session
-  const RequireAuth = ({ children }) => {
-    const profile = localStorage.getItem('user_profile');
-    if (!profile) {
-      return <Navigate to="/login" replace />;
-    }
-    return children;
-  };
-
   if (!import.meta.env.VITE_CLIENT_ID) {
     return (
       <div className="flex h-screen items-center justify-center bg-red-50 text-red-800 p-4">
@@ -181,14 +172,11 @@ function App() {
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/refund-policy" element={<RefundPolicy />} />
               <Route path="/terms" element={<TermsOfUse />} />
-              <Route path="/blogs" element={<ComingSoon title="Blog" />} />
               <Route path="/advocates" element={<AdvocateDiscovery />} />
               <Route path="/advocate/onboarding" element={<AdvocateOnboarding />} />
               <Route path="/advocate/:slug" element={<AdvocateProfile />} />
               <Route path="/admin/verifications" element={<AdminDashboard />} />
 
-
-              <Route path="/blogs" element={<ComingSoon title="Blog" />} />
               <Route path="/academy" element={<LjAcademy />} />
               <Route path="/dashboard" element={<Navigate to="/dashboard/home" replace />} />
 
