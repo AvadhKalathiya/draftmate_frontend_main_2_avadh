@@ -6,6 +6,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 import os
 import uuid
 import psycopg2
+import psycopg2.pool
 from fastapi import FastAPI, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
@@ -81,7 +82,7 @@ class SQLitePooledConnectionProxy:
             def execute(self, query, params=()):
                 q = query.replace('%s', '?')
                 q = q.replace('gen_random_uuid()', 'lower(hex(randomblob(16)))')
-                q = q.replace('CURRENT_TIMESTAMP', "datetime('now')")
+                # CURRENT_TIMESTAMP is natively supported by SQLite
                 if 'ON CONFLICT' in q and 'DO UPDATE' in q:
                     if 'password_reset_otps' in q:
                         q = "INSERT OR REPLACE INTO password_reset_otps (email, otp_code, expires_at) VALUES (?, ?, ?)"
@@ -668,10 +669,11 @@ def update_profile(profile: ProfileUpdate):
                 WHERE user_id = %s
             """, (profile.firstName, profile.lastName, profile.role, profile.workplace, profile.bio, profile.image, profile.user_id))
         else:
+            new_pid = str(uuid.uuid4())
             cur.execute("""
-                INSERT INTO profiles (user_id, first_name, last_name, role, workplace, bio, profile_image_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (profile.user_id, profile.firstName, profile.lastName, profile.role, profile.workplace, profile.bio, profile.image))
+                INSERT INTO profiles (profile_id, user_id, first_name, last_name, role, workplace, bio, profile_image_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (new_pid, profile.user_id, profile.firstName, profile.lastName, profile.role, profile.workplace, profile.bio, profile.image))
             
         conn.commit()
         return {"message": "Profile updated successfully"}
