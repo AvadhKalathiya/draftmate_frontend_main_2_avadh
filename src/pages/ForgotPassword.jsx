@@ -11,6 +11,9 @@ const ForgotPassword = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showOtpInput, setShowOtpInput] = useState(false);
 
+    const [isGoogleUser, setIsGoogleUser] = useState(false);
+    const [otpHint, setOtpHint] = useState('');
+
     const handleSendOtp = async (e) => {
         e.preventDefault();
         setIsLoading(true);
@@ -23,15 +26,38 @@ const ForgotPassword = () => {
                 body: JSON.stringify({ email }),
             });
 
-            const data = await response.json();
+            const text = await response.text();
+            let data = {};
+            if (text) {
+                try {
+                    data = JSON.parse(text);
+                } catch (err) {
+                    if (text.includes("<html") || response.status === 502 || response.status === 503) {
+                        data = { detail: "Authentication server is temporarily restarting. Please retry in a few moments." };
+                    } else {
+                        data = { detail: text.replace(/<[^>]*>?/gm, '').trim() };
+                    }
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(data.detail || 'Failed to send OTP code');
             }
 
-            setOtp('');
+            if (data.dev_otp) {
+                setOtp(data.dev_otp);
+                setOtpHint(data.dev_otp);
+                toast.success(`Verification code: ${data.dev_otp}`, { duration: 8000 });
+            } else {
+                setOtp('');
+                toast.success("Verification code sent to your email.");
+            }
+
+            if (data.is_google_user) {
+                setIsGoogleUser(true);
+            }
+
             setShowOtpInput(true);
-            toast.success("Verification code sent if the email is registered.");
 
         } catch (error) {
             toast.error(error.message);
@@ -52,7 +78,15 @@ const ForgotPassword = () => {
                 body: JSON.stringify({ email, otp }),
             });
 
-            const data = await response.json();
+            const text = await response.text();
+            let data = {};
+            if (text) {
+                try {
+                    data = JSON.parse(text);
+                } catch (err) {
+                    data = { detail: text.includes("<html") ? "Server is restarting, please retry." : text };
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(data.detail || 'Invalid or expired code.');
@@ -138,6 +172,35 @@ const ForgotPassword = () => {
                                 We've sent a 6-digit verification code to <span className="font-semibold">{email}</span>.
                             </p>
                         </div>
+
+                        {isGoogleUser && (
+                            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-900 dark:text-blue-200 text-xs sm:text-sm">
+                                <p className="font-bold text-blue-900 dark:text-blue-100">💡 Google-Linked Account</p>
+                                <p className="mt-1 text-blue-800 dark:text-blue-300 leading-relaxed text-xs">
+                                    This account is registered via Google. You can sign in directly using Google without needing to reset a password.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/login')}
+                                    className="mt-2.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-xs shadow-sm transition-all cursor-pointer"
+                                >
+                                    Go to Google Sign-In →
+                                </button>
+                            </div>
+                        )}
+
+                        {otpHint && (
+                            <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between">
+                                <span>Verification Code: <strong className="text-sm font-mono tracking-wider">{otpHint}</strong></span>
+                                <button
+                                    type="button"
+                                    onClick={() => setOtp(otpHint)}
+                                    className="text-emerald-700 underline font-semibold cursor-pointer"
+                                >
+                                    Auto-fill
+                                </button>
+                            </div>
+                        )}
 
                         <form onSubmit={handleVerifyOtp} className="space-y-6">
                             <label className="flex flex-col gap-2 group">

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import fullLogo from "../assets/FULL_LOGO.svg";
+import { API_CONFIG } from "../services/endpoints";
 import "./Onboarding.css";
 
 const CADetails = () => {
@@ -28,6 +29,24 @@ const CADetails = () => {
     userProfile.onboarding_completed = "yes";
     localStorage.setItem("user_profile", JSON.stringify(userProfile));
     localStorage.setItem("draftmate_onboarded", "true");
+
+    try {
+      const userId = userProfile.id || userProfile.user_id || localStorage.getItem("user_id");
+      if (userId) {
+        fetch(`${API_CONFIG.AUTH.BASE_URL}/profile/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            role: profession || "CA / CS / Compliance",
+            workplace: specialization || "Audit & Compliance",
+            bio: membershipNo ? `Membership: ${membershipNo}` : ""
+          })
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new Event("draftmate_consent_updated"));
 
     await new Promise((res) => setTimeout(res, 500));
     toast.success("Profile saved!");

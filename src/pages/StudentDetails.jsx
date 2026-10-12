@@ -66,6 +66,23 @@ const StudentDetails = () => {
             userProfile.onboarding_completed = "yes";
             localStorage.setItem('user_profile', JSON.stringify(userProfile));
             localStorage.setItem('draftmate_onboarded', 'true');
+
+            try {
+                const userId = userProfile.id || userProfile.user_id || localStorage.getItem('user_id');
+                if (userId) {
+                    fetch(`${API_CONFIG.AUTH.BASE_URL}/profile/update`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: userId,
+                            role: "Law Student",
+                            workplace: college.trim(),
+                            bio: `${selectedYear} law student`
+                        })
+                    }).catch(() => {});
+                }
+            } catch (e) {}
+
             window.dispatchEvent(new Event('draftmate_consent_updated'));
 
             await new Promise(resolve => setTimeout(resolve, 600));

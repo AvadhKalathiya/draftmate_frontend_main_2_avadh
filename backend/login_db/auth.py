@@ -389,10 +389,10 @@ def get_profile_internal(cur, user_id):
         if not p and not u:
             return {}
 
-        role = p[0] if (p and len(p) > 2 and p[2]) else ""
+        role = p[2] if (p and len(p) > 2 and p[2]) else ""
         workplace = p[3] if (p and len(p) > 3 and p[3]) else ""
         bio = p[4] if (p and len(p) > 4 and p[4]) else ""
-        has_onboarded = 'yes' if (role or workplace or bio) else 'no'
+        has_onboarded = 'yes' if (role or workplace or bio or ai_consent == 'yes') else 'no'
 
         return {
             "firstName": p[0] if (p and len(p) > 0) else "",
@@ -972,8 +972,8 @@ def google_login(model: GoogleLoginModel):
         conn.commit()
         
         profile = get_profile_internal(cur, user_id)
-        if not is_new_user and profile.get("onboarding_completed") != "yes":
-            is_new_user = True
+        if not is_new_user or profile.get("onboarding_completed") == "yes":
+            is_new_user = False
 
         return {
             "message": "Google login successful", 
@@ -1085,7 +1085,7 @@ def forgot_password(request: ForgotPasswordRequest):
         ensure_otp_table(cur, conn)
         # 1. Check if user exists (case-insensitive)
         email_lower = request.email.strip().lower() if request.email else ""
-        cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email_lower,))
+        cur.execute("SELECT id, google_id FROM users WHERE LOWER(email) = %s", (email_lower,))
         user = cur.fetchone()
         
         if not user:
@@ -1093,6 +1093,7 @@ def forgot_password(request: ForgotPasswordRequest):
             return {"message": "OTP verification code sent if the email is registered."}
             
         user_id = user[0]
+        google_id = user[1]
         
         # 2. Generate 6-digit OTP code and save/update it
         otp_code = f"{random.randint(100000, 999999)}"
@@ -1107,6 +1108,7 @@ def forgot_password(request: ForgotPasswordRequest):
         conn.commit()
         
         # 3. Send Email via Notification Service
+        smtp_configured = bool(os.getenv("SMTP_USERNAME") and os.getenv("SMTP_PASSWORD"))
         try:
             notification_url = os.getenv("NOTIFICATION_SERVICE_URL", "http://127.0.0.1:8015").rstrip("/")
             notification_payload = {
@@ -1120,10 +1122,14 @@ def forgot_password(request: ForgotPasswordRequest):
         except Exception as e:
             print(f"[AUTH FORGOT PASSWORD] Failed to call Notification Service: {e}")
             
-        response = {"message": "OTP verification code sent if the email is registered."}
         env = os.getenv("ENVIRONMENT", "development").strip().lower()
-        if "development" in env or env.startswith("dev"):
+        response = {
+            "message": "OTP verification code sent if the email is registered.",
+            "is_google_user": bool(google_id)
+        }
+        if not smtp_configured or "development" in env or env.startswith("dev"):
             response["dev_otp"] = otp_code
+            response["smtp_active"] = smtp_configured
             
         return response
         

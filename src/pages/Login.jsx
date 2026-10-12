@@ -136,9 +136,22 @@ const Login = () => {
             const text = await response.text();
             let data = {};
             if (text) {
-                try { data = JSON.parse(text); } catch (e) { data = { detail: text }; }
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    if (text.includes("<html") || text.includes("502 Bad Gateway") || response.status === 502) {
+                        data = { detail: "Authentication server is currently updating. Please wait a few seconds and try again." };
+                    } else {
+                        data = { detail: text.replace(/<[^>]*>?/gm, '').trim() || `Server error (${response.status})` };
+                    }
+                }
             }
-            if (!response.ok) throw new Error(data.detail || `Login failed (${response.status})`);
+            if (!response.ok) {
+                if (response.status === 502 || response.status === 503 || response.status === 504) {
+                    throw new Error("Authentication server is temporarily restarting. Please try again in a few moments.");
+                }
+                throw new Error(data.detail || `Login failed (${response.status})`);
+            }
 
             localStorage.setItem('session_id', data.session_id);
             localStorage.setItem('user_id', data.user_id);
@@ -159,11 +172,16 @@ const Login = () => {
             }
 
             // Route new users to onboarding
-            const hasOnboarded = !data.is_new_user && (
+            const hasOnboarded = !data.is_new_user || (
                 profileData.onboarding_completed === 'yes' ||
+                profileData.ai_consent === 'yes' ||
                 localStorage.getItem('draftmate_onboarded') === 'true' ||
                 !!(profileData.professional_background || profileData.role || profileData.workplace || profileData.bar_council || profileData.college_name)
             );
+
+            if (hasOnboarded) {
+                localStorage.setItem('draftmate_onboarded', 'true');
+            }
 
             toast.dismiss(loadingToast);
             if (!hasOnboarded) {
@@ -228,8 +246,19 @@ const Login = () => {
                     body: JSON.stringify({ token: tokenStr }),
                 });
 
-                const data = await response.json();
+                const text = await response.text();
+                let data = {};
+                if (text) {
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        data = { detail: text.includes("<html") ? "Authentication server is restarting. Please wait a few moments." : text };
+                    }
+                }
                 if (!response.ok) {
+                    if (response.status === 502 || response.status === 503 || response.status === 504) {
+                        throw new Error("Authentication server is temporarily restarting. Please try again in a few moments.");
+                    }
                     throw new Error(data.detail || "Google login failed on server");
                 }
 
@@ -246,12 +275,17 @@ const Login = () => {
                     };
                 localStorage.setItem('user_profile', JSON.stringify(profileData));
 
-                // Check onboarding status for new users
-                const hasOnboarded = !data.is_new_user && (
+                // Check onboarding status for users
+                const hasOnboarded = !data.is_new_user || (
                     profileData.onboarding_completed === 'yes' ||
+                    profileData.ai_consent === 'yes' ||
                     localStorage.getItem('draftmate_onboarded') === 'true' ||
                     !!(profileData.professional_background || profileData.role || profileData.workplace || profileData.bar_council || profileData.college_name)
                 );
+
+                if (hasOnboarded) {
+                    localStorage.setItem('draftmate_onboarded', 'true');
+                }
 
                 // Restore consent state from backend if already accepted
                 if (profileData.ai_consent === 'yes') {
