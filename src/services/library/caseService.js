@@ -344,48 +344,31 @@ export const caseService = {
       targetFile = new File([fileBuffer], fileName, { type: mimeType });
     }
 
-    // Upload binary file to Library document storage (S3 or EFS — permanent URL)
+    // Upload binary file directly to AWS S3 backend storage endpoint
     if (targetFile) {
       const formData = new FormData();
       formData.append('file', targetFile);
-
-      // Get user_id for upload directory scoping
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('userId') || 'anonymous';
-      formData.append('user_id', userId);
-      formData.append('case_id', targetCaseId || 'general');
-      if (documentData.folderId) {
-        formData.append('folder_id', documentData.folderId);
+      if (targetCaseId) {
+        formData.append('case_id', targetCaseId);
       }
-
+      
       const token = localStorage.getItem('session_id') || localStorage.getItem('token');
       const uploadHeaders = {};
-      if (token) uploadHeaders['Authorization'] = `Bearer ${token}`;
-
+      if (token) {
+        uploadHeaders['Authorization'] = `Bearer ${token}`;
+      }
+      
       try {
-        // Use the new Library document upload endpoint → saves to S3 or EFS (permanent)
-        const uploadUrl = `${API_CONFIG.LIBRARY.BASE_URL}/cases/${targetCaseId || 'general'}/documents/upload`;
-        const resp = await fetch(uploadUrl, {
+        const resp = await fetch(`${API_CONFIG.DRAFTER.BASE_URL}/v2/document/upload`, {
           method: 'POST',
           headers: uploadHeaders,
           body: formData
         });
         if (resp.ok) {
-          const result = await resp.json();
-          uploadedMetadata = {
-            id: result.unique_name,
-            name: result.filename,
-            filename: result.filename,
-            url: result.url,          // permanent S3 or EFS URL
-            s3_key: result.s3_key,
-            size: result.size_bytes ? `${(result.size_bytes / 1024).toFixed(1)} KB` : documentData.size,
-            storage: result.storage,  // 's3' or 'efs'
-          };
-          console.log(`[caseService] File uploaded to ${result.storage}: ${result.url}`);
-        } else {
-          console.warn('[caseService] Library upload failed, status:', resp.status);
+          uploadedMetadata = await resp.json();
         }
       } catch (err) {
-        console.warn('[caseService] Library upload error:', err);
+        console.warn("Backend S3 file upload warning, fallback to local indexing:", err);
       }
     }
 
@@ -464,18 +447,22 @@ export const caseService = {
       return activeCase.documents[existingIdx];
     }
 
+    const localBlobUrl = (targetFile && typeof URL !== 'undefined' && URL.createObjectURL) 
+      ? URL.createObjectURL(targetFile) 
+      : null;
+
+    // Create the document
     const newDoc = {
       id: uploadedMetadata?.id || documentData.id || `doc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name: uploadedMetadata?.name || documentData.name,
       filename: uploadedMetadata?.filename || documentData.filename || documentData.name,
-      type: (uploadedMetadata?.name || documentData.name || '').split('.').pop() || 'docx',
+      type: (uploadedMetadata?.name || documentData.name).split('.').pop() || 'docx',
       size: uploadedMetadata?.size || documentData.size || '1.2 MB',
-      syncStatus: uploadedMetadata ? 'synced' : 'local_only',  // 'local_only' = file not persisted
+      syncStatus: uploadedMetadata ? 'synced' : (documentData.syncStatus || 'syncing'),
       lastModified: new Date().toISOString(),
       source: documentData.source || 'upload',
-      url: uploadedMetadata?.url || documentData.url || null,  // permanent URL — NO blob URLs
+      url: uploadedMetadata?.url || documentData.url || localBlobUrl || null,
       s3Key: uploadedMetadata?.s3_key || documentData.s3Key || null,
-      storage: uploadedMetadata?.storage || null,   // 's3', 'efs', or null
       folderId: targetFolderId !== undefined ? targetFolderId : null
     };
 

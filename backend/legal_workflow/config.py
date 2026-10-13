@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # ── AWS / S3 ──────────────────────────────────────────────────────────────
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
-    aws_region: str = "ap-south-1"
-    s3_bucket_name: str = "draftmate-drafts-251200161381"
+    aws_region: str = "us-east-1"
+    s3_bucket_name: str = "drafterai"
     s3_region: str = "ap-south-1"
 
     # ── Database ──────────────────────────────────────────────────────────────

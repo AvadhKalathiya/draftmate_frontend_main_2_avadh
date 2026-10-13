@@ -168,17 +168,11 @@ def get_db_connection():
 # ── File Storage Abstraction ──────────────────────────────────────────────────
 def _upload_file(local_path: str, s3_key: str, content_type: str) -> str:
     """
-    Upload file to S3 if credentials present, else save to EFS shared storage.
-    Returns a URL/path that is permanently accessible.
-
-    Priority:
-      1. S3 upload (if credentials + bucket configured)
-      2. EFS shared_drafts/uploads/ fallback (persistent across ECS restarts)
+    Upload file to S3 if credentials present, else keep local.
+    Returns publicly accessible URL.
     """
     bucket = os.getenv("S3_BUCKET_NAME", "")
     region = os.getenv("AWS_REGION", "ap-south-1")
-
-    # ── Try S3 first ──────────────────────────────────────────────────────
     if bucket and os.getenv("AWS_ACCESS_KEY_ID"):
         try:
             import boto3
@@ -187,28 +181,14 @@ def _upload_file(local_path: str, s3_key: str, content_type: str) -> str:
                 local_path,
                 bucket,
                 s3_key,
-                ExtraArgs={"ContentType": content_type},
+                ExtraArgs={"ContentType": content_type, "ACL": "public-read"},
             )
-            url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
-            logger.info(f"Uploaded to S3: {url}")
-            return url
+            return f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
         except Exception as e:
-            logger.warning(f"S3 upload failed, falling back to EFS: {e}")
+            logger.warning(f"S3 upload failed, falling back to local: {e}")
 
-    # ── EFS fallback — persistent across ECS restarts ─────────────────────
-    shared_storage = os.getenv("SHARED_STORAGE_PATH", "/app/shared_drafts")
-    efs_dest = os.path.join(shared_storage, "uploads", s3_key)
-    os.makedirs(os.path.dirname(efs_dest), exist_ok=True)
-    try:
-        import shutil
-        if os.path.abspath(local_path) != os.path.abspath(efs_dest):
-            shutil.copy2(local_path, efs_dest)
-        logger.info(f"Saved to EFS: {efs_dest}")
-    except Exception as efs_err:
-        logger.error(f"EFS save also failed: {efs_err}")
-
-    # Return an API-served URL path (served by the static files handler)
-    return f"/api/v1/files/{s3_key}"
+    # Local fallback — returns a relative URL; only suitable for dev
+    return f"/uploads/{s3_key}"
 
 
 # ── Profile Completion Engine ─────────────────────────────────────────────────

@@ -21,7 +21,6 @@ from routers import (
     bareacts,
     ecourts,
     legal_dictionary,
-    documents,
 )
 
 load_dotenv(
@@ -225,7 +224,6 @@ app.include_router(video_links.router, prefix="/api/v1/library")
 app.include_router(case_tracking.router, prefix="/api/v1/library")
 app.include_router(notes.router, prefix="/api/v1/library")
 app.include_router(bookmarks.router, prefix="/api/v1/library")
-app.include_router(documents.router)  # has its own prefix with upload + serve endpoints
 
 # Include Indian Kanoon router (already has prefix)
 app.include_router(indiankanoon.router)
