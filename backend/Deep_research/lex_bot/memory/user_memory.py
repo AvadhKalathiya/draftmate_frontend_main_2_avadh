@@ -44,11 +44,11 @@ class UserMemoryManager:
             self._init_memory()
     
     def _init_memory(self):
-        """Initialize mem0 Memory instance."""
+        """Initialize mem0 Memory instance with EFS-backed Qdrant storage."""
         try:
             from mem0 import Memory
             import os
-            
+
             config = {
                 "llm": {
                     "provider": "openai",
@@ -57,20 +57,35 @@ class UserMemoryManager:
                     }
                 }
             }
-            
-            qdrant_host = os.getenv("QDRANT_HOST")
+
+            qdrant_host = os.getenv("QDRANT_HOST", "").strip()
+            qdrant_storage_path = os.getenv(
+                "QDRANT_STORAGE_PATH",
+                "/app/shared_drafts/qdrant_storage"  # EFS mount path
+            )
+
             if qdrant_host:
+                # Remote Qdrant server (docker-compose or separate container)
                 config["vector_store"] = {
                     "provider": "qdrant",
                     "config": {
                         "host": qdrant_host,
-                        "port": 6333
+                        "port": int(os.getenv("QDRANT_PORT", "6333")),
                     }
                 }
-                self.memory = Memory.from_config(config)
+                logger.info(f"[Qdrant] Using remote server: {qdrant_host}:6333")
             else:
-                self.memory = Memory.from_config(config)
-                
+                # Embedded Qdrant — data saved to EFS so it persists across ECS restarts
+                os.makedirs(qdrant_storage_path, exist_ok=True)
+                config["vector_store"] = {
+                    "provider": "qdrant",
+                    "config": {
+                        "path": qdrant_storage_path,
+                    }
+                }
+                logger.info(f"[Qdrant] Embedded mode, storage: {qdrant_storage_path}")
+
+            self.memory = Memory.from_config(config)
             logger.info(f"[OK] Memory initialized for user: {self.user_id}")
         except ImportError:
             logger.warning("[WARN] mem0 not installed. Run: pip install mem0ai")
@@ -78,6 +93,7 @@ class UserMemoryManager:
         except Exception as e:
             logger.error(f"[ERROR] Memory init failed: {e}")
             self.enabled = False
+
     
     def add(
         self,

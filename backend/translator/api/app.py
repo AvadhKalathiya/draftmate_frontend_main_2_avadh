@@ -21,6 +21,7 @@ from backend.translator.crud import (
 from backend.translator.database import SessionLocal, engine
 from backend.translator.models import Base
 from backend.translator.storage import delete_local_file, get_original_upload_path
+from backend.translator.storage.cleanup import cleanup_old_storage_files
 from backend.translator.security import (
     UploadValidationError,
     build_download_response,
@@ -35,7 +36,101 @@ from backend.translator.translators.sarvam_translate import (
 
 MAX_UPLOAD_BYTES = int(os.getenv("TRANSLATOR_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 
+# ── Auto-cleanup scheduler (runs every 6 hours) ───────────────────────────────
+_CLEANUP_INTERVAL_HOURS = 6
+_TRANSLATOR_FILE_MAX_AGE_HOURS = int(
+    os.getenv("TRANSLATOR_FILE_MAX_AGE_HOURS", "168")  # default 7 days
+)
+
+
+def _run_cleanup_loop() -> None:
+    import time
+    import logging as _log
+    logger = _log.getLogger("translator.cleanup")
+    while True:
+        time.sleep(_CLEANUP_INTERVAL_HOURS * 3600)
+        try:
+            removed = cleanup_old_storage_files(max_age_hours=_TRANSLATOR_FILE_MAX_AGE_HOURS)
+            if removed:
+                logger.info(
+                    f"[Translator Cleanup] Removed {len(removed)} old file(s) "
+                    f"(older than {_TRANSLATOR_FILE_MAX_AGE_HOURS}h from EFS)."
+                )
+        except Exception as exc:
+            logger.warning(f"[Translator Cleanup] Error during cleanup: {exc}")
+
+
+import threading as _threading
+_cleanup_thread = _threading.Thread(target=_run_cleanup_loop, daemon=True, name="translator-cleanup")
+_cleanup_thread.start()
+
 app = FastAPI(title="Translator Service", version="0.1.0")
+
+
+@app.on_event("startup")
+async def recover_stuck_jobs() -> None:
+    """
+    On startup, re-queue any translation jobs that were left in 'queued' or
+    'processing' state by a previous ECS task restart or container crash.
+
+    These jobs exist in RDS but have no active Celery worker running them
+    (because Redis was cleared on restart). This handler re-triggers them
+    via the background thread runner so they complete.
+    """
+    import logging as _log
+    import threading
+    _logger = _log.getLogger("translator.startup")
+
+    if SessionLocal is None:
+        _logger.warning("[Startup Recovery] DB not available — skipping stuck job recovery.")
+        return
+
+    try:
+        with SessionLocal() as db:
+            from backend.translator.crud import list_translation_jobs
+            from pathlib import Path
+
+            stuck_jobs = [
+                j for j in (list_translation_jobs(db, user_id=None, limit=200) or [])
+                if j.status in ("queued", "processing")
+            ]
+
+            if not stuck_jobs:
+                _logger.info("[Startup Recovery] No stuck jobs found.")
+                return
+
+            _logger.info(f"[Startup Recovery] Found {len(stuck_jobs)} stuck job(s) — re-queuing...")
+
+            for job in stuck_jobs:
+                # Only re-queue if source file still exists on EFS
+                if not job.source_file or not Path(str(job.source_file)).exists():
+                    _logger.warning(
+                        f"[Startup Recovery] Job #{job.id}: source file missing on EFS, marking failed."
+                    )
+                    job.status = "failed"
+                    job.stage = "failed"
+                    db.commit()
+                    continue
+
+                def _run_recovery(j_id: int):
+                    try:
+                        with SessionLocal() as bg_db:
+                            from backend.translator.crud import get_translation_job
+                            bg_job = get_translation_job(bg_db, j_id)
+                            if bg_job and bg_job.status not in ("completed", "failed"):
+                                from backend.translator.workers.worker import _run_pipeline
+                                _run_pipeline(bg_db, bg_job)
+                                _logger.info(f"[Startup Recovery] Job #{j_id} recovered successfully.")
+                    except Exception as err:
+                        _logger.error(f"[Startup Recovery] Job #{j_id} failed recovery: {err}")
+
+                t = threading.Thread(target=_run_recovery, args=(job.id,), daemon=True)
+                t.start()
+                _logger.info(f"[Startup Recovery] Re-queued job #{job.id} (was: {job.status})")
+
+    except Exception as exc:
+        _logger.error(f"[Startup Recovery] Error during recovery scan: {exc}")
+
 
 app.add_middleware(
     CORSMiddleware,

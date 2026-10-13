@@ -11,6 +11,7 @@ import datetime
 import pypandoc
 
 from converters import extract
+from s3_upload import upload_to_s3
 
 
 app = FastAPI(title="Converter Service")
@@ -84,8 +85,7 @@ async def convert(file: UploadFile = File(...)):
                     # print(c["file_size_kb"])
                     # print(c["scrape_timestamp"])
                     s3_key = f"converted/{base_name}.html"
-                    # a,b= upload_to_s3(out_file, s3_key)
-                    # print(a, b, sep=" ")
+                    upload_to_s3(out_file, s3_key)  # saves to EFS shared_drafts/
                     return HTMLResponse(content=content)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Conversion error: {e}")

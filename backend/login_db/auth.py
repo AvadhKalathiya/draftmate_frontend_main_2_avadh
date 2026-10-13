@@ -196,7 +196,28 @@ def get_db_connection():
         return PooledConnectionProxy(conn, _db_pool)
 
     except Exception as pg_err:
+        is_production = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+
+        if is_production:
+            # In production, NEVER fall back to SQLite.
+            # SQLite = local container file, wiped on every ECS restart.
+            # All registered users would be lost. Raise immediately to surface the misconfiguration.
+            import logging as _log
+            _log.getLogger("auth").critical(
+                f"[Auth DB] CRITICAL: PostgreSQL connection failed in PRODUCTION!\n"
+                f"  Host: {db_host}:{db_port}/{db_name}\n"
+                f"  Error: {pg_err}\n"
+                f"  SQLite fallback is DISABLED in production to prevent data loss.\n"
+                f"  Fix POSTGRES_DSN / POSTGRES_HOST in ECS task definition env vars."
+            )
+            raise RuntimeError(
+                f"Auth Service cannot start: PostgreSQL unavailable in production ({db_host}). "
+                f"Fix your POSTGRES_DSN env var. SQLite fallback is intentionally disabled."
+            ) from pg_err
+
+        # ── Local development fallback only ──────────────────────────────────
         print(f"[WARN] PostgreSQL connection pool initialization failed: {pg_err}. Using local SQLite fallback database.")
+        print("[WARN] SQLite is for LOCAL DEVELOPMENT ONLY — data will be lost on container restart.")
         _db_pool = None
         custom_db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DB_PATH")
         if custom_db_path:
@@ -208,6 +229,7 @@ def get_db_connection():
                 except Exception: persistent_dir = os.path.dirname(__file__)
             db_path = os.path.join(persistent_dir, "auth_fallback.db")
         return SQLitePooledConnectionProxy(db_path)
+
 
 def resolve_uuid_from_identifier(identifier: str, cur) -> Optional[str]:
     if not identifier or not isinstance(identifier, str):
