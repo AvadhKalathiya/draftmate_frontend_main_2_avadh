@@ -33,31 +33,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database Connection
-import sys
-from sshtunnel import SSHTunnelForwarder
-import paramiko
-
-# Monkey-patch paramiko.DSSKey for compatibility with sshtunnel + paramiko 3.0+
-if not hasattr(paramiko, "DSSKey"):
-    class MockDSSKey:
-        @classmethod
-        def from_private_key_file(cls, filename, password=None):
-            return None
-    paramiko.DSSKey = MockDSSKey
-
 # Configuration
 POSTGRES_DSN = os.getenv("POSTGRES_DSN")
-BASTION_IP = os.getenv("BASTION_IP")
-SSH_KEY_PATH = os.getenv("SSH_KEY_PATH")
-RDS_ENDPOINT = os.getenv("RDS_ENDPOINT")
-SSH_USER = os.getenv("SSH_USER", "ec2-user")
-LOCAL_BIND_PORT = 5432
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-change-this")
 ALGORITHM = "HS256"
-
-# Global tunnel reference to keep it alive
-_tunnel = None
 
 import sqlite3
 
@@ -121,7 +100,7 @@ class SQLitePooledConnectionProxy:
 _db_pool = None
 
 def get_db_connection():
-    global _tunnel, _db_pool
+    global _db_pool
     db_host = os.getenv("POSTGRES_HOST", "db")
     db_user = os.getenv("POSTGRES_USER", "postgres")
     db_pass = os.getenv("POSTGRES_PASSWORD") or os.getenv("PSQL_PASSWD") or os.getenv("DB_PASSWORD", "")
@@ -129,54 +108,30 @@ def get_db_connection():
     db_port = os.getenv("POSTGRES_PORT", "5432")
 
     try:
-        # Check SSH Tunnel requirement
-        if BASTION_IP and SSH_KEY_PATH and RDS_ENDPOINT:
-            if _tunnel is None or not _tunnel.is_active:
-                print(f"[INFO] Starting SSH tunnel via {BASTION_IP}...")
+        if _db_pool is None:
+            dsn = os.getenv("POSTGRES_DSN")
+            if dsn:
                 try:
-                    _tunnel = SSHTunnelForwarder(
-                        (BASTION_IP, 22),
-                        ssh_username=SSH_USER,
-                        ssh_pkey=SSH_KEY_PATH,
-                        remote_bind_address=(RDS_ENDPOINT, 5432),
-                        local_bind_address=('127.0.0.1', LOCAL_BIND_PORT)
-                    )
-                    _tunnel.start()
-                except Exception as e:
-                    print(f"[ERROR] Tunnel connection failed: {e}")
-
-            if _db_pool is None:
-                _db_pool = psycopg2.pool.SimpleConnectionPool(1, 20,
-                    host='127.0.0.1',
-                    port=_tunnel.local_bind_port,
-                    user=os.getenv("POSTGRES_USER", "postgres"),
-                    password=os.getenv("POSTGRES_PASSWORD") or os.getenv("PSQL_PASSWD"),
-                    dbname=os.getenv("POSTGRES_DB", "postgres"),
-                    connect_timeout=3,
-                    keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5
-                )
-        else:
-            if _db_pool is None:
-                # Try primary PostgreSQL connection parameters
-                try:
-                    _db_pool = psycopg2.pool.SimpleConnectionPool(1, 20,
-                        host=db_host,
-                        dbname=db_name,
-                        user=db_user,
-                        password=db_pass,
-                        port=db_port,
-                        connect_timeout=3,
+                    _db_pool = psycopg2.pool.SimpleConnectionPool(
+                        1, 20, dsn,
+                        connect_timeout=10,
                         keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5
                     )
-                except Exception as primary_err:
-                    print(f"[WARN] Primary PostgreSQL connect ({db_host}) failed: {primary_err}. Checking DSN...")
-                    dsn = os.getenv("POSTGRES_DSN")
-                    if dsn:
-                        _db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, dsn,
-                            connect_timeout=3,
-                            keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5)
-                    else:
-                        raise primary_err
+                except Exception as dsn_err:
+                    print(f"[WARN] Connecting via POSTGRES_DSN failed: {dsn_err}. Trying discrete parameters...")
+            
+            if _db_pool is None:
+                _db_pool = psycopg2.pool.SimpleConnectionPool(
+                    1, 20,
+                    host=db_host,
+                    dbname=db_name,
+                    user=db_user,
+                    password=db_pass,
+                    port=db_port,
+                    sslmode="require" if ".rds.amazonaws.com" in db_host else "prefer",
+                    connect_timeout=10,
+                    keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5
+                )
 
         conn = _db_pool.getconn()
         
@@ -196,7 +151,28 @@ def get_db_connection():
         return PooledConnectionProxy(conn, _db_pool)
 
     except Exception as pg_err:
+        is_production = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+
+        if is_production:
+            # In production, NEVER fall back to SQLite.
+            # SQLite = local container file, wiped on every ECS restart.
+            # All registered users would be lost. Raise immediately to surface the misconfiguration.
+            import logging as _log
+            _log.getLogger("auth").critical(
+                f"[Auth DB] CRITICAL: PostgreSQL connection failed in PRODUCTION!\n"
+                f"  Host: {db_host}:{db_port}/{db_name}\n"
+                f"  Error: {pg_err}\n"
+                f"  SQLite fallback is DISABLED in production to prevent data loss.\n"
+                f"  Fix POSTGRES_DSN / POSTGRES_HOST in ECS task definition env vars."
+            )
+            raise RuntimeError(
+                f"Auth Service cannot start: PostgreSQL unavailable in production ({db_host}). "
+                f"Fix your POSTGRES_DSN env var. SQLite fallback is intentionally disabled."
+            ) from pg_err
+
+        # ── Local development fallback only ──────────────────────────────────
         print(f"[WARN] PostgreSQL connection pool initialization failed: {pg_err}. Using local SQLite fallback database.")
+        print("[WARN] SQLite is for LOCAL DEVELOPMENT ONLY — data will be lost on container restart.")
         _db_pool = None
         custom_db_path = os.getenv("SQLITE_DB_PATH") or os.getenv("DB_PATH")
         if custom_db_path:
