@@ -1,8 +1,11 @@
+import logging
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger(__name__)
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
 
@@ -26,12 +29,32 @@ def _postgres_driver_url(dsn: str) -> str:
     return dsn
 
 
+is_production = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+
 try:
     engine = create_engine(_postgres_driver_url(POSTGRES_DSN), pool_pre_ping=True)
-except Exception:
-    # Fallback to local SQLite if PostgreSQL container is unreachable
+    if is_production:
+        # In production, verify connection at startup and NEVER fall back to SQLite
+        with engine.connect() as _test_conn:
+            _test_conn.execute(text("SELECT 1"))
+        logger.info(f"[Library DB] Connected to PostgreSQL at {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+except Exception as exc:
+    if is_production:
+        logger.critical(
+            f"[Library DB] CRITICAL: PostgreSQL connection failed in PRODUCTION!\n"
+            f"  Host: {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}\n"
+            f"  Error: {exc}\n"
+            f"  SQLite fallback is DISABLED in production to prevent silent data loss.\n"
+            f"  Fix POSTGRES_DSN / POSTGRES_HOST in ECS task definition env vars."
+        )
+        raise RuntimeError(
+            f"Library Service cannot start: PostgreSQL unavailable in production ({POSTGRES_HOST}). "
+            f"SQLite fallback is intentionally disabled."
+        ) from exc
+    # Fallback to local SQLite if PostgreSQL container is unreachable in development
     sqlite_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "login_db", "auth_fallback.db")
     engine = create_engine(f"sqlite:///{sqlite_path}", connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
