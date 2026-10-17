@@ -12,14 +12,22 @@ POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
 
-POSTGRES_DSN = os.getenv("POSTGRES_DSN") or os.getenv("DATABASE_URL")
-if POSTGRES_DSN and POSTGRES_DSN.startswith("postgresql://"):
-    POSTGRES_DSN = POSTGRES_DSN.replace("postgresql://", "postgresql+psycopg2://", 1)
-elif not POSTGRES_DSN:
-    POSTGRES_DSN = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+POSTGRES_DSN = os.getenv("POSTGRES_DSN") or os.getenv("DATABASE_URL") or f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+
+def _postgres_driver_url(dsn: str) -> str:
+    """Use psycopg2. SQLAlchemy otherwise selects psycopg (v3), which is not installed."""
+    if dsn.startswith("postgresql+psycopg2://") or dsn.startswith("sqlite"):
+        return dsn
+    if dsn.startswith("postgresql://"):
+        return "postgresql+psycopg2://" + dsn[len("postgresql://"):]
+    if dsn.startswith("postgres://"):
+        return "postgresql+psycopg2://" + dsn[len("postgres://"):]
+    return dsn
+
 
 try:
-    engine = create_engine(POSTGRES_DSN, pool_pre_ping=True)
+    engine = create_engine(_postgres_driver_url(POSTGRES_DSN), pool_pre_ping=True)
 except Exception:
     # Fallback to local SQLite if PostgreSQL container is unreachable
     sqlite_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "login_db", "auth_fallback.db")
